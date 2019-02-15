@@ -118,7 +118,7 @@ int PlatformCtrlNode::init()
 	topicPub_Odometry = n.advertise<nav_msgs::Odometry>("/odom",1);	
     topicSub_DriveState = n.subscribe("relayboard_v2/drives/joint_states",1,&PlatformCtrlNode::receiveOdo, this);
     topicPub_DriveCommands = n.advertise<trajectory_msgs::JointTrajectory>("relayboard_v2/drives/joint_trajectory",1);
-	topicSub_ComVel = n.subscribe("/cmd_vel",1,&PlatformCtrlNode::receiveCmd, this);
+	topicSub_ComVel = n.subscribe("/cmd_vel_safe",1,&PlatformCtrlNode::receiveCmd, this);
 	return 0;
 }
 
