@@ -45,7 +45,7 @@ DiffDrive2WKinematics::DiffDrive2WKinematics()
 
 void DiffDrive2WKinematics::execForwKin(const sensor_msgs::JointState& js, nav_msgs::Odometry& odom, OdomPose& cpose)
 {
-	current_time = ros::Time::now();
+
 	//velocities:
 	odom.twist.twist.linear.x = 0.5 * (js.velocity[0] -  js.velocity[1]) * m_dDiam * 0.5;
 	odom.twist.twist.linear.y = 0;
@@ -53,6 +53,7 @@ void DiffDrive2WKinematics::execForwKin(const sensor_msgs::JointState& js, nav_m
 	odom.twist.twist.angular.x = 0;
 	odom.twist.twist.angular.y = 0;
 	odom.twist.twist.angular.z = -(js.velocity[0] +  js.velocity[1]) * m_dDiam /2  / m_dAxisLength;
+ 
 	//positions:
 	double dt = (current_time - last_time).toSec();
 	cpose.xAbs += odom.twist.twist.linear.x * dt * cos(cpose.phiAbs);
@@ -63,6 +64,7 @@ void DiffDrive2WKinematics::execForwKin(const sensor_msgs::JointState& js, nav_m
 	odom.pose.pose.position.z = 0;
 	odom.pose.pose.orientation = tf::createQuaternionMsgFromYaw(cpose.phiAbs);
 	last_time = current_time;
+     
 }
 
 void DiffDrive2WKinematics::execInvKin(const geometry_msgs::Twist& twist, trajectory_msgs::JointTrajectory& traj)
