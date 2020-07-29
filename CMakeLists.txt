@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(neo_kinematics_differential)
 
+set(CMAKE_CXX_STANDARD 11)
+
+## By default build with code optimization and no debug info
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release"
+  	  CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel."
+      FORCE)
+endif(NOT CMAKE_BUILD_TYPE)
+
 find_package(catkin REQUIRED COMPONENTS
  nav_msgs
  roscpp
@@ -44,8 +53,8 @@ add_library(${PROJECT_NAME} common/src/DiffDrive2WKinematics.cpp )
 
 add_executable(neo_kinematics_differential_node ros/src/neo_kinematics_differential_node.cpp)
 
-add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencpp)
-add_dependencies(neo_kinematics_differential_node ${PROJECT_NAME}_gencpp)
+add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
+add_dependencies(neo_kinematics_differential_node ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(neo_kinematics_differential_node ${PROJECT_NAME})
 target_link_libraries(neo_kinematics_differential_node ${catkin_LIBRARIES})

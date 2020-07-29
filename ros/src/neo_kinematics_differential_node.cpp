@@ -32,7 +32,6 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-
 #include <ros/ros.h>
 #include <boost/thread.hpp>
 #include <trajectory_msgs/JointTrajectory.h>
@@ -40,110 +39,86 @@
 #include <DiffDrive2WKinematics.h>
 #include <tf/transform_broadcaster.h>
 
-class PlatformCtrlNode 
+
+class PlatformCtrlNode
 {
-	public:
-	PlatformCtrlNode();
+public:
 	virtual ~PlatformCtrlNode();
-	ros::NodeHandle n;
-	ros::Publisher topicPub_Odometry;	
+
+	ros::NodeHandle nh;
+	ros::Publisher topicPub_Odometry;
 	ros::Subscriber topicSub_DriveState;
-	ros::Publisher topicPub_DriveCommands;	
+	ros::Publisher topicPub_DriveCommands;
 	ros::Subscriber topicSub_ComVel;
 	tf::TransformBroadcaster odom_broadcaster;
 
-	int init();
+	bool init();
 	void receiveCmd(const geometry_msgs::Twist& twist);
 	void receiveOdo(const sensor_msgs::JointState& js);
-	private:
-	boost::mutex mutex;
-	OdomPose p;
-	Kinematics* kin;
-	bool sendTransform;
-};
 
-PlatformCtrlNode::PlatformCtrlNode()
-{
-	kin = NULL;
-}
+private:
+	boost::mutex mutex;
+	Kinematics* kin = 0;
+	bool sendTransform = false;
+
+};
 
 PlatformCtrlNode::~PlatformCtrlNode()
 {
-       if( kin != NULL ) delete kin;
+	delete kin;
 }
 
-
-int PlatformCtrlNode::init()
+bool PlatformCtrlNode::init()
 {
-	std::string kinType;
-	n.param<bool>("sendTransform",sendTransform,false);
-	if(sendTransform)
+	nh.param<bool>("sendTransform", sendTransform, false);
+
 	{
-		ROS_INFO("platform ctrl node: sending transformation");
-	} else {
+		double wheelDiameter = 0;
+		double axisLength = 0;
 
-		ROS_INFO("platform ctrl node: sending no transformation");
-	}
-	n.getParam("kinematics", kinType);
+		if(!nh.getParam("wheelDiameter", wheelDiameter)) {
+			ROS_ERROR_STREAM("wheelDiameter param missing");
+			return false;
+		}
+		if(!nh.getParam("robotWidth", axisLength)) {
+			ROS_ERROR_STREAM("robotWidth param missing");
+			return false;
+		}
 
-	if (kinType == "DiffDrive2W")
-	{
-
-		double wheelDiameter;
-		double axisLength;
-		DiffDrive2WKinematics* diffKin = new DiffDrive2WKinematics;
+		DiffDrive2WKinematics* diffKin = new DiffDrive2WKinematics();
+		diffKin->setWheelDiameter(wheelDiameter);
+		diffKin->setAxisLength(axisLength);
 		kin = diffKin;
-		if(n.hasParam("wheelDiameter"))
-		{
-			n.getParam("wheelDiameter",wheelDiameter);
-			diffKin->setWheelDiameter(wheelDiameter);
-			ROS_INFO("got wheeldieameter from config file");
-		}
-		else diffKin->setWheelDiameter(0.3);
-		if(n.hasParam("robotWidth"))
-		{
-			n.getParam("robotWidth",axisLength);
-			diffKin->setAxisLength(axisLength);
-			ROS_INFO("got axis from config file");
-		}
-		else diffKin->setAxisLength(1);
 	}
-	else
-	{
-		ROS_ERROR("neo_PlatformCtrl-Error: unknown kinematic model");
 
-	}
-	if(kin == NULL) return 1;
-	p.xAbs = 0; p.yAbs = 0; p.phiAbs = 0;
-	topicPub_Odometry = n.advertise<nav_msgs::Odometry>("/odom",1);	
-    topicSub_DriveState = n.subscribe("relayboard_v2/drives/joint_states",1,&PlatformCtrlNode::receiveOdo, this);
-    topicPub_DriveCommands = n.advertise<trajectory_msgs::JointTrajectory>("relayboard_v2/drives/joint_trajectory",1);
-	topicSub_ComVel = n.subscribe("/cmd_vel_safe",1,&PlatformCtrlNode::receiveCmd, this);
-	return 0;
+	topicPub_Odometry = nh.advertise<nav_msgs::Odometry>("/odom", 1);
+	topicSub_DriveState = nh.subscribe("/drives/joint_states",1,&PlatformCtrlNode::receiveOdo, this);
+	topicPub_DriveCommands = nh.advertise<trajectory_msgs::JointTrajectory>("/drives/joint_trajectory", 1);
+	topicSub_ComVel = nh.subscribe("/cmd_vel_safe", 1, &PlatformCtrlNode::receiveCmd, this);
+	return true;
 }
-
-
 
 void PlatformCtrlNode::receiveCmd(const geometry_msgs::Twist& twist)
 {
-   mutex.lock();
+	boost::mutex::scoped_lock lock(mutex);
+
 	trajectory_msgs::JointTrajectory traj;
-	kin->execInvKin(twist,traj);
+	kin->execInvKin(twist, traj);
 	topicPub_DriveCommands.publish(traj);
-   mutex.unlock();
 }
 
 void PlatformCtrlNode::receiveOdo(const sensor_msgs::JointState& js)
 {
-   mutex.lock();
-	//odometry msgs
+	boost::mutex::scoped_lock lock(mutex);
+
+	// odometry msgs
 	nav_msgs::Odometry odom;
-	odom.header.stamp = ros::Time::now();
+	kin->execForwKin(js, odom);
 	odom.header.frame_id = "odom";
 	odom.child_frame_id = "base_link";
-	kin->execForwKin(js, odom, p);
 	topicPub_Odometry.publish(odom);
-	//odometry transform:
+
+	// odometry transform:
 	if(sendTransform)
 	{
 		geometry_msgs::TransformStamped odom_trans;
@@ -156,16 +131,21 @@ void PlatformCtrlNode::receiveOdo(const sensor_msgs::JointState& js)
 		odom_trans.transform.rotation = odom.pose.pose.orientation;
 		odom_broadcaster.sendTransform(odom_trans);
 	}
-   mutex.unlock();
 }
 
 
 int main (int argc, char** argv)
 {
     ros::init(argc, argv, "neo_kinematics_differential_node");
+
 	PlatformCtrlNode node;
-	if(node.init() != 0) ROS_ERROR("can't initialize neo_platformctrl_node");
+
+	if(!node.init()) {
+		return -1;
+	}
+
 	ros::spin();
+
 	return 0;
 }
 
